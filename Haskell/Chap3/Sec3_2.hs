@@ -1,0 +1,122 @@
+module Sec3_2 where
+
+import SynLib
+import ParseLib
+import ScanLib
+import Data.Char (ord,isAlphaNum,isAlpha,isSpace)
+
+import Prelude hiding (seq,lex)
+
+-- p.45
+data Digit = Digit_0 | Digit_1 | Digit_2 | Digit_3
+           | Digit_4 | Digit_5 | Digit_6 | Digit_7
+           | Digit_8 | Digit_9
+             deriving Show
+
+-- p.46
+data Numeral = Single Digit | Composite Numeral Digit
+             deriving Show
+
+-- p.47
+numval :: Numeral -> Int
+numval (Single d)      = digval d
+numval (Composite n d) = numval n * 10 + digval d
+
+digval :: Digit -> Int
+digval Digit_0 = 0
+digval Digit_1 = 1
+digval Digit_2 = 2
+digval Digit_3 = 3
+digval Digit_4 = 4
+digval Digit_5 = 5
+digval Digit_6 = 6
+digval Digit_7 = 7
+digval Digit_8 = 8
+digval Digit_9 = 9
+
+-- p.53
+data Expr = Num Numeral
+          | Pexpr Expr Expr
+          | Mexpr Expr Expr
+             deriving Show
+
+-- p.57
+expval :: Expr -> Int
+expval (Num n)       = numval n
+expval (Pexpr e1 e2) = expval e1 + expval e2
+expval (Mexpr e1 e2) = expval e1 - expval e2
+
+-- p.62
+lex :: [Char] -> [Token Tag]
+lex = (strip T_Junk) . fst . head . lexer
+
+syn :: [Token Tag] -> Prog
+syn = fst . head . prog
+
+parse :: [Char] -> Prog
+parse = syn . lex
+
+lexer :: Parser Char [Token Tag]
+lexer = lexime [(some (satisfy isSpace), T_Junk),
+                (number, T_Num),
+                (anyof string ["(",")",
+                                "+","-"
+                                ], T_Sym) ]
+
+-- p.64
+eval :: String -> Int
+eval = expval . parse
+
+{---------------------------------------------------------
+  補助関数
+ ---------------------------------------------------------}
+
+type Prog = Expr
+prog = expr
+
+expr :: Parser (Tag,[Char]) Expr
+expr =   factor `seqp`
+         many ((lit "+" `x_seq` expr `using` flip Pexpr) `alt`
+               (lit "-" `x_seq` expr `using` flip Mexpr) )
+                  `using` uncurry (foldl (flip id))
+factor = kind T_Num `using` pnumber `alt`
+         lit "(" `x_seq` expr `seq_x` lit ")"
+
+pnumber = Num . pnumber' . map valdig
+    where
+    pnumber' (n:ns) = foldl Composite (Single n) ns
+
+valdig :: Char -> Digit
+valdig '0' = Digit_0
+valdig '1' = Digit_1
+valdig '2' = Digit_2
+valdig '3' = Digit_3
+valdig '4' = Digit_4
+valdig '5' = Digit_5
+valdig '6' = Digit_6
+valdig '7' = Digit_7
+valdig '8' = Digit_8
+valdig '9' = Digit_9
+
+
+{---------------------------------------------------------
+  テスト
+ ---------------------------------------------------------}
+
+-- p.55
+testexp01 =
+    Pexpr (Num (Composite
+                (Composite (Single Digit_2) Digit_9)
+                Digit_1))
+          (Num (Composite (Single Digit_3) Digit_1))
+
+test01 = expval testexp01
+test02 = lex "291"
+test03 = lex "291 +31"          -- p.62
+test04 = parse "291"
+test05 = parse "291+"        -- + は無視される
+test06 = parse "291 +31"        -- p.62
+test07 = eval "291"
+test08 = eval "291 +31"
+test09 = eval "291 + 31 - 32"
+test10 = eval "291 -31 - 32"    -- 292 となり計算としては誤り
